@@ -1,0 +1,160 @@
+# Node.js / JavaScript / TypeScript
+**/node_modules/
+node_modules/
+.pnp*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Build outputs
+**/build/
+**/dist/
+dist/
+dist-ssr/
+
+# Debug logs
+*debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.pnpm-debug.log*
+.pnpm-debug.log*
+lerna-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+
+# Testing
+**/coverage/
+.coverage
+.coverage.*
+coverage.*
+htmlcov/
+
+# Bun
+.bun/
+
+# Compiled Python files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Python tools and environments
+.Python
+env/
+env.bak/
+.venv/
+.venv.bak/
+.pdm-python
+.pdm-build/
+
+# Virtual environment and installation logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# pytest and testing artifacts
+.pytest_cache/
+
+# Tox, nox, and other testing tools
+.tox/
+.nox/
+
+# Hypothesis
+.hypothesis/
+
+# Type checkers and linters
+*.cover
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+
+# Build system artifacts
+*.egg-info/
+build/
+
+# Debugging files
+*.pdb
+
+# Rust
+target/
+Cargo.lock
+**/*.rs.bk
+
+# Environment & Configuration
+.env
+.env*
+*.local
+!.env.example
+
+# direnv configuration
+.direnv/
+
+# Cloudflare
+.wrangler
+
+# Docker
+.docker/
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+*.tfplan
+*.tfvars
+!*.tfvars.example
+
+# Infrastructure-related data and logs
+infra/**/data/
+infra/**/logs/
+
+# JetBrains (IntelliJ, PyCharm, WebStorm, etc.)
+.idea/
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+ehthumbs.db
+Thumbs.db
+
+# Process ID files
+*.pid
+
+# Private and sensitive key files
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Vault secrets
+vault-token
+
+# Secrets directory
+secrets/
+!secrets/.gitkeep
+
+# Logs
+logs/
+
+*.xls
+*.xlsx

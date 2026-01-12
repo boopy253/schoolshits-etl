@@ -1,0 +1,87 @@
+[project]
+name = "schoolshits-etl"
+version = "0.0.1"
+description = ""
+authors = [{ name = "boopy253", email = "boopy253@gmail.com" }]
+
+requires-python = ">=3.14"
+
+dependencies = [
+  "loguru>=0.7.3",
+  "openpyxl>=3.1.5",
+  "pandas>=2.3.3",
+  "xlrd>=2.0.2",
+]
+
+[dependency-groups]
+dev = [
+  "bandit>=1.9.2",
+  "mypy>=1.19.1",
+  "pre-commit>=4.5.1",
+  "pytest>=9.0.2",
+  "pytest-cov>=7.0.0",
+  "pytest-mock>=3.15.1",
+  "ruff>=0.14.11",
+]
+
+[tool.uv]
+package = true
+
+[tool.setuptools]
+packages = ["schoolshits_etl"]
+
+
+[project.scripts]
+shitsetl = "schoolshits_etl.main:main"
+
+
+[tool.ruff]
+line-length = 120
+target-version = "py314"
+fix = true
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "F",   # Pyflakes (logic/unused checks)
+  "I",   # isort (import sorting)
+  "B",   # flake8-bugbear (best practices & bug risk)
+  "C4",  # flake8-comprehensions (optimize comprehensions)
+  "UP",  # pyupgrade (syntax modernization)
+  "SIM", # flake8-simplify (simplify code)
+  "RET", # flake8-return (return statement checks)
+]
+ignore = [
+  "E501", # line too long (handled by ruff format)
+  "B008", # do not perform function calls in argument defaults
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["schoolshits_etl"]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+warn_unused_configs = true
+disable_error_code = ["import-untyped"]
+
+[tool.bandit]
+skips = [
+  "B101", # Use of 'assert' detected
+  "B601", # Potential security issue with paramiko (weak SSH key)
+]
+exclude_dirs = ["tests", "*/tests/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "--strict-markers --strict-config"
+
+[tool.coverage.run]
+source_pkgs = ["schoolshits_etl"]
+
+[tool.pyright]
+ignore = ["tests"]
