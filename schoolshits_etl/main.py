@@ -2,52 +2,76 @@ import argparse
 import re
 import time
 from copy import copy
+from typing import Any, cast
 
 import pandas as pd
 from loguru import logger
 from openpyxl import load_workbook
+from openpyxl.cell import Cell
+from openpyxl.worksheet.worksheet import Worksheet
 
 
-# 参数解析
-def parse_args():
-    parser = argparse.ArgumentParser(description="根据 source Excel 填充 target 模板（支持多种 source 格式）")
+def parse_args() -> argparse.Namespace:
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="Populate target Excel template from source data.")
 
-    parser.add_argument("--source", default="source.xlsx")
-    parser.add_argument("--template", default="target.xlsx")
-    parser.add_argument("--output", default="target_filled.xlsx")
-    parser.add_argument("--side-output", default="version_grade_book.xlsx")
+    parser.add_argument("--source", default="source.xlsx", help="Path to input Excel file")
+    parser.add_argument("--template", default="target.xlsx", help="Path to template Excel file")
+    parser.add_argument("--output", default="target_filled.xlsx", help="Path to output Excel file")
+    parser.add_argument("--side-output", default="version_grade_book.xlsx", help="Path to side output Excel file")
     parser.add_argument("--school", default="示例小学")
     parser.add_argument("--year", default="2025")
-    parser.add_argument("--start-row", type=int, default=4)
+    parser.add_argument("--start-row", type=int, default=4, help="Row number to start writing data in template")
 
     return parser.parse_args()
 
 
-def normalize_text(text):
+def normalize_text(text: Any) -> str:
+    """Normalize text by converting brackets and stripping whitespace."""
     if not isinstance(text, str):
         return ""
     return text.replace("（", "(").replace("）", ")").strip()
 
 
-def copy_row_style(ws, src_row, tgt_row, max_col):
+def copy_row_style(ws: Worksheet, src_row: int, tgt_row: int, max_col: int) -> None:
+    """
+    Copy cell styles (font, border, alignment) from source row to target row.
+    Essential for maintaining template aesthetics when data exceeds template rows.
+    """
     for col in range(1, max_col + 1):
         src = ws.cell(row=src_row, column=col)
         tgt = ws.cell(row=tgt_row, column=col)
-        tgt.value = src.value
-        if src.has_style:
-            tgt._style = copy(src._style)
+
+        if isinstance(tgt, Cell):
+            tgt.value = src.value  # Copy value to ensure no blank cells if logic requires
+            if src.has_style:
+                tgt._style = copy(src._style)
 
 
-# Source 兼容 + 归一化
-def load_and_normalize_source(path):
-    raw = pd.read_excel(path, header=None)
+def load_and_normalize_source(path: str) -> pd.DataFrame:
+    """
+    Load source Excel and normalize columns based on detected header format.
+    Strategies:
+    1. '发货单明细': Split '发货数' based on '是否免费'.
+    2. '教辅目录': Dynamic column location for student/teacher counts.
+    3. '免费教材': Fuzzy match for Name/Version columns.
+    4. Default: Standard format.
+    """
+    logger.info(f"Loading source file: {path}")
+    try:
+        raw = pd.read_excel(path, header=None)
+    except Exception as e:
+        logger.error(f"Failed to read source file: {e}")
+        raise
+
     first_cell = str(raw.iloc[0, 0])
+    df2: pd.DataFrame | None = None
 
     if "发货单明细" in first_cell:
-        logger.info("识别为【发货单明细】格式（header 在第 2 行）")
+        logger.info("Format detected: [Shipment Details] (Header at row 2)")
         df = pd.read_excel(path, header=1)
 
-        def split_row(r):
+        def split_row(r: pd.Series) -> pd.Series:
             free = str(r.get("是否免费")).strip() == "是"
             return pd.Series(
                 {
@@ -59,10 +83,10 @@ def load_and_normalize_source(path):
                 }
             )
 
-        df2 = df.apply(split_row, axis=1)
+        df2 = cast(pd.DataFrame, df.apply(split_row, axis=1))
 
     elif "教辅目录" in first_cell:
-        logger.info("识别为【小学教辅目录】格式（header 在第 2 行）")
+        logger.info("Format detected: [Supplement Catalog] (Header at row 2)")
         df = pd.read_excel(path, header=1)
         student_col = df.columns[-2]
         teacher_col = df.columns[-1]
@@ -78,11 +102,11 @@ def load_and_normalize_source(path):
         )
 
     elif "免费教材" in first_cell:
-        logger.info("识别为【免费教材征订目录】格式（header 在第 3 行）")
+        logger.info("Format detected: [Free Textbook Catalog] (Header at row 3)")
         df = pd.read_excel(path, header=2)
 
-        def find_col_by_keywords(df, keywords):
-            for col in df.columns:
+        def find_col_by_keywords(df_in: pd.DataFrame, keywords: list[str]) -> Any | None:
+            for col in df_in.columns:
                 col_str = str(col).replace(" ", "").replace("\u3000", "")
                 if all(k in col_str for k in keywords):
                     return col
@@ -102,20 +126,22 @@ def load_and_normalize_source(path):
         )
 
     else:
-        logger.info("识别为【订数统计表】格式")
+        logger.info("Format detected: [Standard Statistics Table]")
         df = pd.read_excel(path)
-        df2 = df[["书名", "版别", "单价", "非免费订数", "免费订数"]].copy()
+        df2 = cast(pd.DataFrame, df[["书名", "版别", "单价", "非免费订数", "免费订数"]].copy())
 
+    # Ensure numeric types
     for col in ["非免费订数", "免费订数"]:
-        df2[col] = pd.to_numeric(df2[col], errors="coerce").fillna(0).astype(int)  # type: ignore
+        df2[col] = cast(pd.Series, pd.to_numeric(df2[col], errors="coerce")).fillna(0).astype(int)
 
-    df2["单价"] = pd.to_numeric(df2["单价"], errors="coerce").fillna(0)  # type: ignore
+    df2["单价"] = cast(pd.Series, pd.to_numeric(df2["单价"], errors="coerce")).fillna(0)
 
+    logger.success(f"Source loaded successfully. Total rows: {len(df2)}")
     return df2
 
 
-# 业务解析逻辑
-def parse_grade_and_term(book_name):
+def parse_grade_and_term(book_name: Any) -> tuple[str | None, str | None]:
+    """Extract grade (e.g., '一年级') and term (e.g., '上学期') from book name."""
     if not isinstance(book_name, str):
         return None, None
 
@@ -136,13 +162,15 @@ def parse_grade_and_term(book_name):
         "6": "六年级",
     }
 
-    grade = None
-    term = None
+    grade: str | None = None
+    term: str | None = None
 
+    # Match "X年级"
     m = re.search(r"((一|二|三|四|五|六)|([1-6]))年级", text)
     if m:
         grade = grade_map[m.group(1)]
     else:
+        # Match "X(上/下)" pattern fallback
         m = re.search(r"([一二三四五六])(?=[上下])", text)
         if m:
             grade = grade_map[m.group(1)]
@@ -155,8 +183,8 @@ def parse_grade_and_term(book_name):
     return grade, term
 
 
-# 科目识别
-def parse_subject(book_name):
+def parse_subject(book_name: Any) -> str | None:
+    """Identify subject based on predefined keywords."""
     if not isinstance(book_name, str):
         return None
 
@@ -178,15 +206,18 @@ def parse_subject(book_name):
 
     for s in subjects:
         if s in book_name:
+            # Normalize '体育与健康' to '体育'
             return "体育" if s in ("体育", "体育与健康") else s
 
     return None
 
 
-def parse_category(book_name):
+def parse_category(book_name: Any) -> str | None:
+    """Categorize as '教辅' or '教材' based on keywords."""
     if not isinstance(book_name, str):
         return None
-    for k in [
+
+    keywords = [
         "教参",
         "教师用书",
         "学生活动手册",
@@ -199,14 +230,15 @@ def parse_category(book_name):
         "同步",
         "导学",
         "训练",
-    ]:
+    ]
+    for k in keywords:
         if k in book_name:
             return "教辅"
     return "教材"
 
 
-# 版本识别
-def parse_version(book_name, fallback_version):
+def parse_version(book_name: Any, fallback_version: Any) -> Any:
+    """Extract publisher version from book name, falling back to provided version if not found."""
     if not isinstance(book_name, str):
         return fallback_version
 
@@ -228,6 +260,7 @@ def parse_version(book_name, fallback_version):
             v = m.group(0)
             return "北师大版" if v == "北师大" else v
 
+    # Handle "配xxx" pattern (common in supplementary materials)
     m = re.search(r"配\s*([^\)（）]+)", text)
     if m:
         v = m.group(1).strip()
@@ -240,16 +273,16 @@ def parse_version(book_name, fallback_version):
     return fallback_version
 
 
-# 主程序
-def main():
+def main() -> None:
     args = parse_args()
     start_time = time.time()
 
-    logger.info(f"读取 Source：{args.source}")
+    # 1. Load and Preprocess Data
     df_src = load_and_normalize_source(args.source)
 
-    # 年级排序
-    df_src["_grade_order"] = df_src["书名"].apply(  # type: ignore
+    # Sort by grade (Custom order: 1-6, others last)
+    # Using a temporary column for sorting logic
+    df_src["_grade_order"] = df_src["书名"].apply(
         lambda x: {
             "一年级": 1,
             "二年级": 2,
@@ -259,52 +292,73 @@ def main():
             "六年级": 6,
         }.get(parse_grade_and_term(x)[0] or "", 99)
     )
+    df_src = df_src.sort_values(by="_grade_order").drop(columns="_grade_order")
 
-    df_src = df_src.sort_values(by="_grade_order").drop(columns="_grade_order")  # type: ignore
+    # 2. Main Output (Template Filling)
+    logger.info(f"Processing main output: {args.template} -> {args.output}")
 
-    # 主输出
-    wb = load_workbook(args.template)
-    ws = wb.active
-
-    if ws is None:
-        raise ValueError("Template Excel file has no active worksheet.")
+    try:
+        wb = load_workbook(args.template)
+        ws: Worksheet | None = wb.active
+        if ws is None:
+            raise ValueError("Template Excel file has no active worksheet.")
+    except Exception as e:
+        logger.critical(f"Failed to load template: {e}")
+        return
 
     max_col = ws.max_column
     current_row = args.start_row
 
+    # Stats for logging
+    stats: dict[str, int] = {"processed": 0, "missing_grade": 0, "missing_subject": 0}
+
     for idx, (_, r) in enumerate(df_src.iterrows()):
+        book = r["书名"]
+        grade, term = parse_grade_and_term(book)
+        subject = parse_subject(book)
+        category = parse_category(book)
+
+        # Logging for data quality issues
+        if not grade:
+            logger.warning(f"[Row {idx + 1}] Unknown Grade: '{book}'")
+            stats["missing_grade"] += 1
+        if not subject:
+            logger.debug(f"[Row {idx + 1}] Unknown Subject: '{book}'")
+            stats["missing_subject"] += 1
+
+        # Extend template styles if necessary
         if current_row > ws.max_row:
             copy_row_style(ws, args.start_row, current_row, max_col)
 
+        # Write Index
         ws.cell(row=current_row, column=1, value=idx + 1)
 
-        book = r["书名"]
-        grade, term = parse_grade_and_term(book)
-
-        values = [
+        values: list[Any] = [
             args.year,
             term,
             grade,
-            parse_subject(book),
-            parse_category(book),
+            subject,
+            category,
             book,
             r["版别"],
             r["非免费订数"] + r["免费订数"],
             r["单价"],
         ]
 
+        # Write Data (Starting from column 3)
         for col, value in enumerate(values, start=3):
             ws.cell(row=current_row, column=col, value=value)
 
         current_row += 1
+        stats["processed"] += 1
 
     wb.save(args.output)
-    logger.info(f"主输出完成：{args.output}")
+    logger.success(f"Main output saved. Stats: {stats}")
 
-    # 副输出
-    logger.info("生成副输出文件")
+    # 3. Side Output (Data Dump)
+    logger.info(f"Generating side output: {args.side_output}")
 
-    side_rows = []
+    side_rows: list[dict[str, Any]] = []
     for _, r in df_src.iterrows():
         book = r["书名"]
         grade, _ = parse_grade_and_term(book)
@@ -322,6 +376,6 @@ def main():
         )
 
     pd.DataFrame(side_rows).to_excel(args.side_output, index=False)
-    logger.info(f"副输出完成：{args.side_output}")
+    logger.success("Side output saved.")
 
-    logger.info(f"全部完成 ✅ 用时 {time.time() - start_time:.2f} 秒")
+    logger.info(f"All tasks completed in {time.time() - start_time:.2f} seconds.")
